@@ -1,0 +1,5 @@
+Lab2, k-nearest neighbors (KNN).
+
+We use the CIFAR-10 dataset, obtained from https://www.cs.toronto.edu/~kriz/cifar.html. We have modified the training images into 10 .bin files, so that each .bin file contains the 5,000 training images for one class and there are 5,000 <3072 uint8>. We modified the test images into two .bin files, (1) one contains the 10,000 <3072 uint8> test images, and the other contains the labels, 10,000 <1 uint32>.
+
+Linghao Song, Fall 2025, Yale ECE 8880.
