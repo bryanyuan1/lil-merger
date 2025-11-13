@@ -317,7 +317,8 @@ void read_stage(
 
 void process_stage(
     int a_buffer[], int &a_head,
-    int b_buffer[], int &b_head,
+    int &a_tail, 
+    int b_buffer[], int &b_head, int &b_tail, 
     int out_buffer[], int &out_tail
 ){
     const int INF_VALUE = 0x7FFFFFFF;
@@ -467,7 +468,7 @@ void merge_streams_parallel(
     while(a_head < size_a-1 || b_head < size_b-1){
     #pragma HLS PIPELINE II=1
         read_stage(q_a, q_b, a_buffer, a_tail, b_buffer, b_tail, size_a, size_b);
-        process_stage(a_buffer, a_head, b_buffer, b_head, out_buffer, out_tail);
+        process_stage(a_buffer, a_head, a_tail, b_buffer, b_head, b_tail, out_buffer, out_tail);
     }
     write_stage(out_buffer, out_head, out_tail, q_out);
 }
