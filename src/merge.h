@@ -5,6 +5,9 @@
 #include <ap_int.h>
 #include <hls_vector.h>
 
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 // void MergeKernel(
 //     tapa::mmap<int> array_a,
 //     tapa::mmap<int> array_b,
