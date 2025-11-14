@@ -130,6 +130,9 @@ int main(int argc, char** argv) {
     clog << endl;
     
     // Host merge for verification
+
+    array_a = {1, 2, 3, 4};
+    array_b = {2, 3, 4, 5};
     aligned_vector<int> merged_host;
     steady_clock::time_point t1 = steady_clock::now();
     merge_host(array_a, array_b, merged_host);
