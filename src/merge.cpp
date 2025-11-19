@@ -187,13 +187,75 @@ ComparatorResult comparator_unit(
     return result;
 }
 
-void comparator_array_nxn_with_padding(
-    int a_values[4],
-    int b_values[4],    
-    int output_values[8],
-    int n
-) {
+void comparator_array_stage_0_geq(int a_values[4],
+    int b_values[4], bool is_geq_matrix[5][5]) {
+    const int INF_VALUE = 0x7FFFFFFF;
+    for (int i = 0; i < 5; i++) {
+    #pragma HLS UNROLL
+        for (int j = 0; j < 5; j++) {
+        #pragma HLS UNROLL
+            int a_val = (i < 4) ? a_values[i] : INF_VALUE;
+            int b_val = (j < 4) ? b_values[j] : INF_VALUE;
+            is_geq_matrix[i][j] = (a_val >= b_val);
+        }
+    }
+}
 
+void comparator_array_stage_1_comp(
+    int a_values[4],
+    int b_values[4], 
+    bool is_geq_matrix[5][5],
+    ComparatorResult comp_results[5][5]
+) {
+    const int INF_VALUE = 0x7FFFFFFF;
+    for (int i = 0; i < 5; i++) {
+    #pragma HLS UNROLL
+        for (int j = 0; j < 5; j++) {
+        #pragma HLS UNROLL
+            
+            bool top_is_less = (i > 0) ? (!is_geq_matrix[i-1][j]) : false;
+            bool left_is_geq = (j > 0) ? is_geq_matrix[i][j-1] : true;
+            
+            
+            int a_value_val = (i < 4) ? a_values[i] : INF_VALUE;
+            int b_value_val = (j < 4) ? b_values[j] : INF_VALUE;
+            
+            comp_results[i][j] = comparator_unit(
+                a_value_val,
+                b_value_val,
+                top_is_less,
+                left_is_geq,
+                i, j
+            );
+        }
+    }
+}
+
+void comparator_array_stage_2_output(
+    ComparatorResult comp_results[5][5],
+    int output_values[8]
+) {
+    for (int group = 0; group < 8; group++) {
+    #pragma HLS UNROLL
+        int out_value = 0;
+        
+        for (int i = 0; i < 5; i++) {
+        #pragma HLS UNROLL
+            for (int j = 0; j < 5; j++) {
+            #pragma HLS UNROLL
+                
+                bool is_valid_tile = !(i == 4 && j == 4);
+                
+                if (i + j == group && 
+                    is_valid_tile && 
+                    comp_results[i][j].is_boundary) {
+                    out_value = comp_results[i][j].output_value;
+                }
+            }
+        }
+        
+        output_values[group] = out_value;
+    }
 }
 
 void comparator_array_4x4_with_padding( 
@@ -327,8 +389,19 @@ void process_stage(
     #pragma HLS ARRAY_PARTITION variable=a_values complete
     int b_values[4];
     #pragma HLS ARRAY_PARTITION variable=b_values complete
+
+    // stage 0: calculate GEQ matrix
+    bool is_geq_matrix[5][5];
+    #pragma HLS ARRAY_PARTITION variable=is_geq_matrix complete dim=0
+
+    // stage 1: calculate comp results
+    ComparatorResult comp_results[5][5];
+    #pragma HLS ARRAY_PARTITION variable=comp_results complete dim=0
+
+    // stage 2: calculate comparator outputs
     int output_values[8];
     #pragma HLS ARRAY_PARTITION variable=output_values complete
+
     // read from the on-chip array buffer
     // always read at most 4 numbers
     // the amount to parallel process is the smaller capacity
@@ -356,16 +429,20 @@ void process_stage(
     // case 1: if either array has been processed all
     // consume the other array and increment buffer head
     if (a_capacity == 0) {
-        for (int j = 0; j < b_capacity; j++) {
+        for (int j = 0; j < 4; j++) {
         #pragma HLS UNROLL
-            out_buffer[out_tail + j + 1] = b_values[j];
+            if (j < b_capacity) {
+                out_buffer[out_tail + j + 1] = b_values[j];
+            }
         }
         b_head += b_capacity;
         out_tail += b_capacity;
     } else if (b_capacity == 0) {
-        for (int j = 0; j < a_capacity; j++) {
+        for (int j = 0; j < 4; j++) {
         #pragma HLS UNROLL
-            out_buffer[out_tail + j + 1] = a_values[j];
+            if (j < a_capacity) {
+                out_buffer[out_tail + j + 1] = a_values[j];
+            }
         }
         a_head += a_capacity;
         out_tail += a_capacity;
@@ -426,20 +503,29 @@ void process_stage(
             // result bound * 2 numbers in the output_values
             int total_capacity = well_bound + well_bound;
             // only process elements left of bound
-            for (int j = well_bound; j < 4; j++) {
+            for (int j = 0; j < 4; j++) {
             #pragma HLS UNROLL
-                a_values[j] = INF_VALUE;
-                b_values[j] = INF_VALUE;
+                if (j >= well_bound) {
+                    a_values[j] = INF_VALUE;
+                    b_values[j] = INF_VALUE;
+                }
             }
 
             // printf("before using comparator array:\n");
             // printf("a[4] = %d %d %d %d\n", a_values[0], a_values[1], a_values[2], a_values[3]);
             // printf("b[4] = %d %d %d %d\n", b_values[0], b_values[1], b_values[2], b_values[3]);
             // process some numbers
-            comparator_array_4x4_with_padding(
-                a_values, b_values,
-                output_values
-            );
+
+            // comaprator stage 1: geq matrix generation
+            comparator_array_stage_0_geq(a_values, b_values, is_geq_matrix);
+            comparator_array_stage_1_comp(a_values, b_values, is_geq_matrix, comp_results);
+            comparator_array_stage_2_output(comp_results, output_values);
+
+            
+            // comparator_array_4x4_with_padding(
+            //     a_values, b_values,
+            //     output_values
+            // );
             // printf("comparator array results: \n");
             // printf("outputs: %d %d %d %d %d %d %d %d\n",
             //     output_values[0],
@@ -451,9 +537,11 @@ void process_stage(
             //     output_values[6],
             //     output_values[7]
             //     );
-            for (int j = 0; j < total_capacity; j++) {
+            for (int j = 0; j < 8; j++) {
             #pragma HLS UNROLL
-                out_buffer[out_tail + j + 1] = output_values[j];
+                if (j < total_capacity) {
+                    out_buffer[out_tail + j + 1] = output_values[j];
+                }
             }
             // mark a, b consumed, output produced
             a_head += well_bound;
@@ -467,6 +555,7 @@ void write_stage(
     int out_buffer[], int &out_head, int out_tail,
     tapa::ostream<hls::vector<int,8>> &q_out
 ){
+    #pragma HLS INLINE
     for (int i = 0; i < (out_tail + 1); i += 8) {
     #pragma HLS pipeline II=1
         hls::vector<int, 8> vec_out;
@@ -508,25 +597,27 @@ void merge_streams_parallel(
 
     int num_cycles = 0;
 
+main_loop:
     while(a_head < size_a-1 || b_head < size_b-1){
     #pragma HLS PIPELINE II=1
         read_stage(q_a, q_b, a_buffer, a_tail, b_buffer, b_tail, size_a, size_b);
         // printf("read stage finish, a_head = %d, a_tail = %d, b_head = %d, b_tail = %d\n", a_head, a_tail, b_head, b_tail);
         process_stage(a_buffer, a_head, a_tail, b_buffer, b_head, b_tail, out_buffer, out_tail, num_cycles);
-        // printf("process_stage finish\n");
+        
     }
-    printf("Read+process total cycle count: %d\n", num_cycles);
-    printf("Speedup: %.1fx\n", (size_a + size_b) * 1.0f / num_cycles);
+    // printf("Read+process total cycle count: %d\n", num_cycles);
+    // printf("Speedup: %.1fx\n", (size_a + size_b) * 1.0f / num_cycles);
     write_stage(out_buffer, out_head, out_tail, q_out);
 }
 
 void write_result_parallel(
     tapa::istream<hls::vector<int, 8>> &q_in,
     tapa::mmap<hls::vector<int, 8>> result_mem,
-    const int total_size,
+    const int size_a,
+    const int size_b,
     tapa::ostream<bool> &q_done
 ) {
-    int num_vectors = (total_size + 7) / 8;
+    int num_vectors = (size_a + size_b + 7) / 8;
     for (int i = 0; i < num_vectors; i++) {
     #pragma HLS pipeline II=1
         result_mem[i] = q_in.read();
@@ -548,13 +639,11 @@ void MergeKernel(
     tapa::stream<hls::vector<int, 8>, 2> q_merged("stream_merged");
     tapa::stream<bool, 2> q_done("stream_done");
     
-    const int total_size = size_a + size_b;
-    
     tapa::task()
         .invoke(read_array_a_parallel, array_a, size_a, q_a)
         .invoke(read_array_b_parallel, array_b, size_b, q_b)
         .invoke(merge_streams_parallel, q_a, q_b, q_merged, size_a, size_b)
-        .invoke(write_result_parallel, q_merged, merged_result, total_size, q_done)
+        .invoke(write_result_parallel, q_merged, merged_result, size_a, size_b, q_done)
         .invoke(timer, q_done, cycle_count)
         ;
 }
