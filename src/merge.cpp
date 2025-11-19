@@ -150,41 +150,47 @@ void timer(
 //         ;
 // }
 
-ComparatorResult comparator_unit(
+void comparator_unit(
     int a_value, 
     int b_value,        
     bool top_is_less,
     bool left_is_geq,
     int row_idx,           
-    int col_idx
+    int col_idx,
+    bool comp_results_is_boundary[5][5],
+    int comp_results_output_values[5][5]
 ) {
-    ComparatorResult result;
-
     bool is_padding = (row_idx == 4 && col_idx == 4);
     
-    result.is_geq = (a_value >= b_value);
-    result.group_id = row_idx + col_idx;
-    result.is_boundary = false;
+    // result.is_boundary = false;
+    comp_results_is_boundary[row_idx][col_idx] = !is_padding && (
+        (row_idx == 0 && col_idx == 0)
+        || (row_idx == 0 && a_value >= b_value)
+        || (a_value >= b_value && top_is_less)
+        || (a_value < b_value && left_is_geq)
+    );
+    comp_results_output_values[row_idx][col_idx] = 
+        (a_value >= b_value) ? b_value : a_value;
+
+    // if (is_padding) {
+    //     result.is_boundary = false;
+    // } else if (row_idx == 0 && col_idx == 0) {
+    //     result.is_boundary = true;
+    // } else if (row_idx == 0 && result.is_geq) {
+    //     result.is_boundary = true;
+    // } else if (result.is_geq && top_is_less) {
+    //     result.is_boundary = true;
+    // } else if (!result.is_geq && left_is_geq) {
+    //     result.is_boundary = true;
+    // }
     
-    if (is_padding) {
-        result.is_boundary = false;
-    } else if (row_idx == 0 && col_idx == 0) {
-        result.is_boundary = true;
-    } else if (row_idx == 0 && result.is_geq) {
-        result.is_boundary = true;
-    } else if (result.is_geq && top_is_less) {
-        result.is_boundary = true;
-    } else if (!result.is_geq && left_is_geq) {
-        result.is_boundary = true;
-    }
+    // if (result.is_geq) {
+    //     result.output_value = b_value;
+    // } else {
+    //     result.output_value = a_value;
+    // }
     
-    if (result.is_geq) {
-        result.output_value = b_value;
-    } else {
-        result.output_value = a_value;
-    }
-    
-    return result;
+    // return result;
 }
 
 void comparator_array_stage_0_geq(int a_values[4],
@@ -205,7 +211,8 @@ void comparator_array_stage_1_comp(
     int a_values[4],
     int b_values[4], 
     bool is_geq_matrix[5][5],
-    ComparatorResult comp_results[5][5]
+    bool comp_results_is_boundary[5][5],
+    int comp_results_output_values[5][5]
 ) {
     const int INF_VALUE = 0x7FFFFFFF;
     for (int i = 0; i < 5; i++) {
@@ -220,19 +227,21 @@ void comparator_array_stage_1_comp(
             int a_value_val = (i < 4) ? a_values[i] : INF_VALUE;
             int b_value_val = (j < 4) ? b_values[j] : INF_VALUE;
             
-            comp_results[i][j] = comparator_unit(
+            comparator_unit(
                 a_value_val,
                 b_value_val,
                 top_is_less,
                 left_is_geq,
-                i, j
+                i, j, comp_results_is_boundary,
+                comp_results_output_values
             );
         }
     }
 }
 
 void comparator_array_stage_2_output(
-    ComparatorResult comp_results[5][5],
+    bool comp_results_is_boundary[5][5],
+    int comp_results_output_values[5][5],
     int output_values[8]
 ) {
     for (int group = 0; group < 8; group++) {
@@ -248,8 +257,8 @@ void comparator_array_stage_2_output(
                 
                 if (i + j == group && 
                     is_valid_tile && 
-                    comp_results[i][j].is_boundary) {
-                    out_value = comp_results[i][j].output_value;
+                    comp_results_is_boundary[i][j]) {
+                    out_value = comp_results_output_values[i][j];
                 }
             }
         }
@@ -258,73 +267,73 @@ void comparator_array_stage_2_output(
     }
 }
 
-void comparator_array_4x4_with_padding( 
-    int a_values[4],
-    int b_values[4],    
-    int output_values[8]
-) {
-    const int INF_VALUE = 0x7FFFFFFF;
+// void comparator_array_4x4_with_padding( 
+//     int a_values[4],
+//     int b_values[4],    
+//     int output_values[8]
+// ) {
+//     const int INF_VALUE = 0x7FFFFFFF;
     
-    ComparatorResult comp_results[5][5];
-    #pragma HLS ARRAY_PARTITION variable=comp_results complete dim=0
+//     ComparatorResult comp_results[5][5];
+//     #pragma HLS ARRAY_PARTITION variable=comp_results complete dim=0
     
-    bool is_geq_matrix[5][5];
-    #pragma HLS ARRAY_PARTITION variable=is_geq_matrix complete dim=0
+//     bool is_geq_matrix[5][5];
+//     #pragma HLS ARRAY_PARTITION variable=is_geq_matrix complete dim=0
     
-    for (int i = 0; i < 5; i++) {
-    #pragma HLS UNROLL
-        for (int j = 0; j < 5; j++) {
-        #pragma HLS UNROLL
-            int a_val = (i < 4) ? a_values[i] : INF_VALUE;
-            int b_val = (j < 4) ? b_values[j] : INF_VALUE;
-            is_geq_matrix[i][j] = (a_val >= b_val);
-        }
-    }
+//     for (int i = 0; i < 5; i++) {
+//     #pragma HLS UNROLL
+//         for (int j = 0; j < 5; j++) {
+//         #pragma HLS UNROLL
+//             int a_val = (i < 4) ? a_values[i] : INF_VALUE;
+//             int b_val = (j < 4) ? b_values[j] : INF_VALUE;
+//             is_geq_matrix[i][j] = (a_val >= b_val);
+//         }
+//     }
     
-    for (int i = 0; i < 5; i++) {
-    #pragma HLS UNROLL
-        for (int j = 0; j < 5; j++) {
-        #pragma HLS UNROLL
+//     for (int i = 0; i < 5; i++) {
+//     #pragma HLS UNROLL
+//         for (int j = 0; j < 5; j++) {
+//         #pragma HLS UNROLL
             
-            bool top_is_less = (i > 0) ? (!is_geq_matrix[i-1][j]) : false;
-            bool left_is_geq = (j > 0) ? is_geq_matrix[i][j-1] : true;
+//             bool top_is_less = (i > 0) ? (!is_geq_matrix[i-1][j]) : false;
+//             bool left_is_geq = (j > 0) ? is_geq_matrix[i][j-1] : true;
             
             
-            int a_value_val = (i < 4) ? a_values[i] : INF_VALUE;
-            int b_value_val = (j < 4) ? b_values[j] : INF_VALUE;
+//             int a_value_val = (i < 4) ? a_values[i] : INF_VALUE;
+//             int b_value_val = (j < 4) ? b_values[j] : INF_VALUE;
             
-            comp_results[i][j] = comparator_unit(
-                a_value_val,
-                b_value_val,
-                top_is_less,
-                left_is_geq,
-                i, j
-            );
-        }
-    }
+//             comp_results[i][j] = comparator_unit(
+//                 a_value_val,
+//                 b_value_val,
+//                 top_is_less,
+//                 left_is_geq,
+//                 i, j
+//             );
+//         }
+//     }
     
-    for (int group = 0; group < 8; group++) {
-    #pragma HLS UNROLL
-        int out_value = 0;
+//     for (int group = 0; group < 8; group++) {
+//     #pragma HLS UNROLL
+//         int out_value = 0;
         
-        for (int i = 0; i < 5; i++) {
-        #pragma HLS UNROLL
-            for (int j = 0; j < 5; j++) {
-            #pragma HLS UNROLL
+//         for (int i = 0; i < 5; i++) {
+//         #pragma HLS UNROLL
+//             for (int j = 0; j < 5; j++) {
+//             #pragma HLS UNROLL
                 
-                bool is_valid_tile = !(i == 4 && j == 4);
+//                 bool is_valid_tile = !(i == 4 && j == 4);
                 
-                if (i + j == group && 
-                    is_valid_tile && 
-                    comp_results[i][j].is_boundary) {
-                    out_value = comp_results[i][j].output_value;
-                }
-            }
-        }
+//                 if (i + j == group && 
+//                     is_valid_tile && 
+//                     comp_results[i][j].is_boundary) {
+//                     out_value = comp_results[i][j].output_value;
+//                 }
+//             }
+//         }
         
-        output_values[group] = out_value;
-    }
-}
+//         output_values[group] = out_value;
+//     }
+// }
 
 void read_array_a_parallel(
     tapa::mmap<hls::vector<int, 4>> array_mem,
@@ -389,6 +398,12 @@ void process_stage(
     #pragma HLS ARRAY_PARTITION variable=a_values complete
     int b_values[4];
     #pragma HLS ARRAY_PARTITION variable=b_values complete
+
+    bool comp_results_is_boundary[5][5];
+    #pragma HLS ARRAY_PARTITION variable=comp_results_is_boundary complete dim=0
+
+    int comp_results_output_values[5][5];
+    #pragma HLS ARRAY_PARTITION variable=comp_results_output_values complete dim=0
 
     // stage 0: calculate GEQ matrix
     bool is_geq_matrix[5][5];
@@ -518,8 +533,8 @@ void process_stage(
 
             // comaprator stage 1: geq matrix generation
             comparator_array_stage_0_geq(a_values, b_values, is_geq_matrix);
-            comparator_array_stage_1_comp(a_values, b_values, is_geq_matrix, comp_results);
-            comparator_array_stage_2_output(comp_results, output_values);
+            comparator_array_stage_1_comp(a_values, b_values, is_geq_matrix, comp_results_is_boundary, comp_results_output_values);
+            comparator_array_stage_2_output(comp_results_is_boundary, comp_results_output_values, output_values);
 
             
             // comparator_array_4x4_with_padding(
@@ -600,6 +615,7 @@ void merge_streams_parallel(
 main_loop:
     while(a_head < size_a-1 || b_head < size_b-1){
     #pragma HLS PIPELINE II=1
+    #pragma HLS dependence variable=a_head intra true distance=1
         read_stage(q_a, q_b, a_buffer, a_tail, b_buffer, b_tail, size_a, size_b);
         // printf("read stage finish, a_head = %d, a_tail = %d, b_head = %d, b_tail = %d\n", a_head, a_tail, b_head, b_tail);
         process_stage(a_buffer, a_head, a_tail, b_buffer, b_head, b_tail, out_buffer, out_tail, num_cycles);
