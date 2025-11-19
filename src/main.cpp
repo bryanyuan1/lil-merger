@@ -131,8 +131,10 @@ int main(int argc, char** argv) {
     
     // Host merge for verification
 
-    array_a = {1, 2, 3, 4};
-    array_b = {2, 3, 4, 5};
+    // array_a = {1, 2, 3, 4};
+    // array_b = {2, 3, 4, 5};
+    // FLAGS_size_a = 4;
+    // FLAGS_size_b = 4;
     aligned_vector<int> merged_host;
     steady_clock::time_point t1 = steady_clock::now();
     merge_host(array_a, array_b, merged_host);
@@ -254,7 +256,7 @@ int main(int argc, char** argv) {
     // Compare host and kernel results
     if (verify_results(merged_host, merged_kernel)) {
         clog << "Merge kernel test PASSED!" << endl;
-        clog << "Speedup: " << time_host / (time_kernel * 1e-6) << "x" << endl;
+        // clog << "Speedup: " << time_host / (time_kernel * 1e-6) << "x" << endl;
     } else {
         clog << "Merge kernel test FAILED - results mismatch!" << endl;
         return EXIT_FAILURE;

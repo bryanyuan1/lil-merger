@@ -319,8 +319,9 @@ void process_stage(
     int a_buffer[], int &a_head,
     int &a_tail, 
     int b_buffer[], int &b_head, int &b_tail, 
-    int out_buffer[], int &out_tail
+    int out_buffer[], int &out_tail, int &num_cycles
 ){
+    num_cycles += 1;
     const int INF_VALUE = 0x7FFFFFFF;
     int a_values[4];
     #pragma HLS ARRAY_PARTITION variable=a_values complete
@@ -333,8 +334,11 @@ void process_stage(
     // the amount to parallel process is the smaller capacity
     int a_diff = a_tail - a_head;
     int b_diff = b_tail - b_head;
-    int a_capacity = min(4, a_diff);
-    int b_capacity = min(4, b_diff);
+
+    int a_capacity = MIN(4, a_diff);
+    int b_capacity = MIN(4, b_diff);
+
+    // printf("a_capacity = %d, b_capacity = %d\n", a_capacity, b_capacity);
     for (int j = 0; j < 4; j++) {
         #pragma HLS UNROLL
         if (a_head + j <= a_tail) {
@@ -348,6 +352,7 @@ void process_stage(
             b_values[j] = INF_VALUE;
         }
     }
+    // printf("a_head = %d, b_head = %d\n", a_head, b_head);
     // case 1: if either array has been processed all
     // consume the other array and increment buffer head
     if (a_capacity == 0) {
@@ -364,35 +369,56 @@ void process_stage(
         }
         a_head += a_capacity;
         out_tail += a_capacity;
+    // case 1.5: both capacities are only 1, quick process.
+    } else if (a_capacity == 1 && b_capacity == 1) {
+        a_head += 1;
+        b_head += 1;
+        if (a_values[0] <= b_values[0]) {
+            out_buffer[out_tail + 1] = a_values[0];
+            out_buffer[out_tail + 2] = b_values[0];
+        } else {
+            out_buffer[out_tail + 1] = b_values[0];
+            out_buffer[out_tail + 2] = a_values[0];
+        }
+        out_tail += 2;
+    }
     // case 2: both array are not empty,
     // - first check well-partition bound:
     //   bound had to smaller than min capacity
     //         AND
-    //   max(a[bound - 1], b[bound - 1]) <= min(a[bound], b[bound])
+    //   MAX(a[bound - 1], b[bound - 1]) <= MIN(a[bound], b[bound])
     //   * Ideally we want well_bound to be 1,2,3.
     // - check bound and action
     //   - if bound 1-4, parallel process buffer[0:bound]
     //   - if bound 0, pick smaller element and increment a_head or b_head
-    } else {
+    else {
         int well_bound = 0;
-        int min_capacity = min(a_capacity, b_capacity);
-        if (min_capacity == 2 && 
-            max(a_values[0], b_values[0]) < min(a_values[1], b_values[1])) {
-            well_bound = 1;
-        } else if (min_capacity == 3 && 
-            max(a_values[1], b_values[1]) < min(a_values[2], b_values[2])) {
-            well_bound = 2;
-        } else if (min_capacity == 4 && 
-            max(a_values[2], b_values[2]) < min(a_values[3], b_values[3])) {
-            well_bound = 3;
-        }
+        int min_capacity = MIN(a_capacity, b_capacity);
+        // printf("min_capacity = %d\n", min_capacity);
 
+        // printf("before calculating well_bound\n");
+        // printf("a[4] = %d %d %d %d\n", a_values[0], a_values[1], a_values[2], a_values[3]);
+        // printf("b[4] = %d %d %d %d\n", b_values[0], b_values[1], b_values[2], b_values[3]);
+        if (min_capacity == 4 && 
+            MAX(a_values[2], b_values[2]) <= MIN(a_values[3], b_values[3])) {
+            well_bound = 3;
+        } else if (min_capacity == 3 && 
+            MAX(a_values[1], b_values[1]) <= MIN(a_values[2], b_values[2])) {
+            well_bound = 2;
+        } else if (min_capacity == 2 && 
+            MAX(a_values[0], b_values[0]) <= MIN(a_values[1], b_values[1])) {
+            well_bound = 1;
+        } 
+
+        // printf("result well_bound = %d\n", well_bound);
         if (well_bound == 0) {
             if (a_values[0] < b_values[0]) {
                 out_tail += 1;
+                a_head += 1;
                 out_buffer[out_tail] = a_values[0];
             } else {
                 out_tail += 1;
+                b_head += 1;
                 out_buffer[out_tail] = b_values[0];
             }
         } else {
@@ -405,14 +431,29 @@ void process_stage(
                 a_values[j] = INF_VALUE;
                 b_values[j] = INF_VALUE;
             }
+
+            // printf("before using comparator array:\n");
+            // printf("a[4] = %d %d %d %d\n", a_values[0], a_values[1], a_values[2], a_values[3]);
+            // printf("b[4] = %d %d %d %d\n", b_values[0], b_values[1], b_values[2], b_values[3]);
             // process some numbers
             comparator_array_4x4_with_padding(
                 a_values, b_values,
                 output_values
             );
+            // printf("comparator array results: \n");
+            // printf("outputs: %d %d %d %d %d %d %d %d\n",
+            //     output_values[0],
+            //     output_values[1],
+            //     output_values[2],
+            //     output_values[3],
+            //     output_values[4],
+            //     output_values[5],
+            //     output_values[6],
+            //     output_values[7]
+            //     );
             for (int j = 0; j < total_capacity; j++) {
             #pragma HLS UNROLL
-                out_buffer[out_tail + j] = output_values[j];
+                out_buffer[out_tail + j + 1] = output_values[j];
             }
             // mark a, b consumed, output produced
             a_head += well_bound;
@@ -450,26 +491,32 @@ void merge_streams_parallel(
     // - note that head is for consume and tail is for produce
     //   whenever head is at index i, it means the ith element
     //   has been produced/consumed
-    int a_buffer[1024];
+    int a_buffer[4096];
     #pragma HLS ARRAY_PARTITION variable=a_buffer type=cyclic factor=4
     int a_head = -1;
     int a_tail = -1;
 
-    int b_buffer[1024];
+    int b_buffer[4096];
     #pragma HLS ARRAY_PARTITION variable=b_buffer type=cyclic factor=4
     int b_head = -1;
     int b_tail = -1;
 
-    int out_buffer[1024];
+    int out_buffer[4096];
     #pragma HLS ARRAY_PARTITION variable=out_buffer type=cyclic factor=8
     int out_head = -1;
     int out_tail = -1;
 
+    int num_cycles = 0;
+
     while(a_head < size_a-1 || b_head < size_b-1){
     #pragma HLS PIPELINE II=1
         read_stage(q_a, q_b, a_buffer, a_tail, b_buffer, b_tail, size_a, size_b);
-        process_stage(a_buffer, a_head, a_tail, b_buffer, b_head, b_tail, out_buffer, out_tail);
+        // printf("read stage finish, a_head = %d, a_tail = %d, b_head = %d, b_tail = %d\n", a_head, a_tail, b_head, b_tail);
+        process_stage(a_buffer, a_head, a_tail, b_buffer, b_head, b_tail, out_buffer, out_tail, num_cycles);
+        // printf("process_stage finish\n");
     }
+    printf("Read+process total cycle count: %d\n", num_cycles);
+    printf("Speedup: %.1fx\n", (size_a + size_b) * 1.0f / num_cycles);
     write_stage(out_buffer, out_head, out_tail, q_out);
 }
 
