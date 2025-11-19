@@ -605,7 +605,7 @@ void merge_streams_parallel(
     int b_head = -1;
     int b_tail = -1;
 
-    int out_buffer[4096];
+    int out_buffer[8192];
     #pragma HLS ARRAY_PARTITION variable=out_buffer type=cyclic factor=8
     int out_head = -1;
     int out_tail = -1;
