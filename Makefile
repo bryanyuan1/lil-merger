@@ -50,3 +50,28 @@ cleanall:
 	rm -rf work.out _x .Xil
 
 .PHONY: swsim hls hwemu hw bitstream run_hw clean cleanall
+
+
+# --------------------------------------------------------------------
+# Additional hardware test cases (same style as hwemu / run_hw)
+# --------------------------------------------------------------------
+
+# Strongly unbalanced: A large, B small
+run_hw_unbalanced_largeA: merge
+	./merge --skip_kernel=false --bitstream=./merge.xo \
+		--size_a=1800 --size_b=200
+
+# Balanced: A and B equal and moderately large
+run_hw_balanced: merge
+	./merge --skip_kernel=false --bitstream=./merge.xo \
+		--size_a=1000 --size_b=1000
+
+# Very long arrays: stress test (adjust down if this is too big)
+run_hw_long: merge
+	./merge --skip_kernel=false --bitstream=./merge.xo \
+		--size_a=4000 --size_b=4000
+
+# Convenience target to run all HW tests (requires merge.xclbin prebuilt via `make bitstream`)
+tests_hw: run_hw_unbalanced_largeA run_hw_unbalanced_largeB run_hw_balanced run_hw_long
+
+.PHONY: run_hw_unbalanced_largeA run_hw_unbalanced_largeB run_hw_balanced run_hw_long tests_hw
