@@ -72,6 +72,6 @@ run_hw_long: merge
 		--size_a=4000 --size_b=4000
 
 # Convenience target to run all HW tests (requires merge.xclbin prebuilt via `make bitstream`)
-tests_hw: run_hw_unbalanced_largeA run_hw_unbalanced_largeB run_hw_balanced run_hw_long
+tests_hw: run_hw_unbalanced_largeA run_hw_balanced run_hw_balanced run_hw_long
 
 .PHONY: run_hw_unbalanced_largeA run_hw_unbalanced_largeB run_hw_balanced run_hw_long tests_hw
